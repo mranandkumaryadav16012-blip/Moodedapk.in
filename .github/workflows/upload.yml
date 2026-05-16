@@ -1,0 +1,58 @@
+name: APK Upload System
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install rclone + jq
+        run: |
+          curl https://rclone.org/install.sh | sudo bash
+          sudo apt install jq -y
+
+      - name: Configure rclone
+        run: |
+          mkdir -p ~/.config/rclone
+
+          cat > ~/.config/rclone/rclone.conf <<EOF
+          [r2]
+          type = s3
+          provider = Cloudflare
+          access_key_id = ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret_access_key = ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          endpoint = https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          acl = public-read
+          EOF
+
+      - name: Upload APKs
+        run: |
+          for file in uploads/*; do
+
+            if [ -f "$file" ]; then
+
+              filename=$(basename "$file")
+
+              EXISTS=$(rclone ls r2:${{ secrets.R2_BUCKET }} | grep "$filename" || true)
+
+              if [ ! -z "$EXISTS" ]; then
+                echo "Already Uploaded → Skipping: $filename"
+                continue
+              fi
+
+              echo "Uploading: $filename"
+
+              rclone copy "$file" r2:${{ secrets.R2_BUCKET }} --progress
+
+              echo "Uploaded Successfully: $filename"
+
+            fi
+
+          done
